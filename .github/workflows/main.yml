@@ -1,14 +1,26 @@
-# .github/workflows/undetected-search.yml
-name: Undetected Chrome Search
+# .github/workflows/automated-search.yml
+name: Automated Google Search for zx server
 
 on:
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
+    inputs:
+      max_pages:
+        description: 'Number of pages to search'
+        required: false
+        default: '15'
+        type: choice
+        options:
+          - '10'
+          - '15'
+          - '20'
+          - '30'
 
 jobs:
-  search:
+  search-automation:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     
     steps:
       - name: Setup Python
@@ -16,24 +28,25 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install dependencies
+      - name: Install Playwright
         run: |
-          pip install undetected-chromedriver selenium
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser
+          pip install playwright
+          playwright install chromium
+          playwright install-deps
       
-      - name: Run undetected search
+      - name: Create search script
         run: |
-          python - << 'EOF'
-          import undetected_chromedriver as uc
+          cat > search.py << 'EOF'
           import random
           import time
-          from selenium.webdriver.common.by import By
-          from selenium.webdriver.common.keys import Keys
+          import os
+          import sys
+          from playwright.sync_api import sync_playwright
           
-          SEARCH_TERM = "eaglercraft server"
+          # Configuration
+          SEARCH_TERM = "zx server"
           TARGET_URL = "https://z-x.ddns.net/"
-          MAX_PAGES = 50
+          MAX_PAGES = int(os.getenv('MAX_PAGES', '15'))
           
           def generate_random_ips(count=50):
               ips = []
@@ -42,75 +55,184 @@ jobs:
                   ips.append(ip)
               return ips
           
-          num_devices = random.randint(1, 5)
-          all_ips = generate_random_ips(50)
-          selected_ips = random.sample(all_ips, num_devices)
-          
-          print(f"📱 Using {num_devices} device(s)")
-          success_count = 0
-          
-          for i, device_ip in enumerate(selected_ips, 1):
-              print(f"\n🖥️  DEVICE {i}/{num_devices} (IP: {device_ip})")
-              
-              driver = None
+          def search_and_click(page, max_pages):
               try:
-                  options = uc.ChromeOptions()
-                  options.add_argument('--headless=new')
-                  options.add_argument('--no-sandbox')
-                  options.add_argument('--disable-dev-shm-usage')
-                  
-                  driver = uc.Chrome(options=options)
-                  
-                  print("  🌐 Searching Google...")
-                  driver.get("https://www.google.com")
+                  # Go to Google
+                  page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=30000)
                   time.sleep(2)
                   
-                  search_box = driver.find_element(By.NAME, "q")
-                  search_box.send_keys(SEARCH_TERM)
-                  search_box.send_keys(Keys.RETURN)
-                  time.sleep(3)
+                  # Accept cookies if present
+                  try:
+                      accept_btn = page.query_selector('button:has-text("Accept all"), button:has-text("I agree")')
+                      if accept_btn:
+                          accept_btn.click()
+                          time.sleep(1)
+                  except:
+                      pass
+                  
+                  # Search for term
+                  search_input = page.query_selector('textarea[name="q"], input[name="q"]')
+                  if not search_input:
+                      search_input = page.query_selector('[aria-label="Search"]')
+                  
+                  search_input.fill(SEARCH_TERM)
+                  search_input.press("Enter")
+                  page.wait_for_load_state("networkidle", timeout=30000)
+                  time.sleep(2)
                   
                   found = False
-                  for page_num in range(1, MAX_PAGES + 1):
+                  page_num = 1
+                  
+                  while page_num <= max_pages and not found:
                       print(f"  📄 Scanning page {page_num}...")
                       
-                      links = driver.find_elements(By.XPATH, "//a[@href]")
+                      # Get all links
+                      links = page.query_selector_all('a[href]')
+                      
                       for link in links:
                           try:
-                              url = link.get_attribute("href")
-                              if url and TARGET_URL in url:
-                                  print(f"  ✅ FOUND on page {page_num}!")
+                              href = link.get_attribute('href')
+                              if href and TARGET_URL in href:
+                                  print(f"  ✅ FOUND target URL on page {page_num}!")
+                                  print(f"  📍 URL: {href}")
+                                  
+                                  # Click the link
                                   link.click()
+                                  page.wait_for_load_state("networkidle", timeout=30000)
                                   time.sleep(2)
                                   found = True
                                   break
                           except:
                               continue
                       
-                      if found:
-                          break
-                      
-                      try:
-                          next_btn = driver.find_element(By.ID, "pnnext")
-                          next_btn.click()
-                          time.sleep(3)
-                      except:
+                      # Go to next page if not found
+                      if not found and page_num < max_pages:
+                          next_btn = page.query_selector('#pnnext')
+                          if next_btn:
+                              next_btn.click()
+                              page.wait_for_load_state("networkidle", timeout=30000)
+                              time.sleep(2)
+                              page_num += 1
+                          else:
+                              print(f"  ⏹️  No more pages (stopped at page {page_num})")
+                              break
+                      else:
                           break
                   
-                  if found:
-                      success_count += 1
-                      print(f"  ✅ Device {i} SUCCESS!")
-                  else:
-                      print(f"  ❌ Device {i} FAILED")
-                      
+                  if not found:
+                      print(f"  ❌ Target URL not found in {page_num} pages")
+                  
+                  return found, page_num
+                  
               except Exception as e:
-                  print(f"  ❌ Error: {str(e)[:100]}")
-              finally:
-                  if driver:
-                      driver.quit()
-              
-              if i < num_devices:
-                  time.sleep(random.uniform(2, 4))
+                  print(f"  ❌ Error: {str(e)[:200]}")
+                  return False, 0
           
-          print(f"\n✅ Success rate: {success_count}/{num_devices}")
+          def main():
+              print("=" * 70)
+              print("🤖 AUTO SEARCH - zx server (Playwright)")
+              print("=" * 70)
+              print(f"🎯 Target: {TARGET_URL}")
+              print(f"🔍 Search: {SEARCH_TERM}")
+              print(f"📚 Max Pages: {MAX_PAGES}")
+              
+              # Generate IPs
+              all_ips = generate_random_ips(50)
+              print(f"\n📡 Generated {len(all_ips)} random IPs")
+              
+              # Select random number of devices (1-5)
+              num_devices = random.randint(1, 5)
+              selected_ips = random.sample(all_ips, num_devices)
+              print(f"📱 Using {num_devices} device(s)")
+              for idx, ip in enumerate(selected_ips, 1):
+                  print(f"   Device {idx}: {ip}")
+              
+              success_count = 0
+              
+              with sync_playwright() as p:
+                  for i, device_ip in enumerate(selected_ips, 1):
+                      print(f"\n{'='*70}")
+                      print(f"🖥️  DEVICE {i}/{num_devices}")
+                      print(f"   Simulated IP: {device_ip}")
+                      
+                      browser = None
+                      try:
+                          # Launch browser
+                          browser = p.chromium.launch(
+                              headless=True,
+                              args=[
+                                  '--no-sandbox',
+                                  '--disable-dev-shm-usage',
+                                  '--disable-blink-features=AutomationControlled',
+                                  '--disable-features=IsolateOrigins,site-per-process'
+                              ]
+                          )
+                          
+                          # Create context with custom user agent
+                          context = browser.new_context(
+                              viewport={'width': 1920, 'height': 1080},
+                              user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
+                          )
+                          page = context.new_page()
+                          
+                          # Search and click
+                          found, pages = search_and_click(page, MAX_PAGES)
+                          
+                          if found:
+                              success_count += 1
+                              print(f"  ✅ Device {i} SUCCESS! (found on page {pages})")
+                          else:
+                              print(f"  ❌ Device {i} FAILED (searched {pages} pages)")
+                          
+                          # Random delay between devices
+                          if i < num_devices:
+                              delay = random.uniform(3, 6)
+                              print(f"  ⏱️  Waiting {delay:.1f}s before next device...")
+                              time.sleep(delay)
+                              
+                      except Exception as e:
+                          print(f"  ❌ Device {i} ERROR: {str(e)[:150]}")
+                      finally:
+                          if browser:
+                              browser.close()
+              
+              # Print summary
+              print("\n" + "=" * 70)
+              print("📊 FINAL RESULTS")
+              print("=" * 70)
+              print(f"✅ Successful devices: {success_count}/{num_devices}")
+              print(f"📈 Success rate: {(success_count/num_devices)*100:.1f}%")
+              
+              if success_count > 0:
+                  print("\n🎯 Target URL was found and clicked!")
+              else:
+                  print("\n⚠️  Target URL was NOT found in search results")
+                  print("   This could mean:")
+                  print("   1. The URL is not indexed by Google")
+                  print("   2. The URL doesn't appear for this search term")
+                  print("   3. Google is blocking automated requests")
+              
+              print("\n✨ Search completed!")
+              return success_count > 0
+          
+          if __name__ == "__main__":
+              success = main()
+              sys.exit(0 if success else 1)
           EOF
+          
+          echo "✅ Script created"
+      
+      - name: Run search automation
+        env:
+          MAX_PAGES: ${{ github.event.inputs.max_pages || '15' }}
+        run: |
+          python search.py
+      
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-results
+          path: |
+            search.py
+          retention-days: 3
