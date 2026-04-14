@@ -3,24 +3,28 @@ name: Automated Google Search for zx server
 
 on:
   schedule:
-    - cron: '0 */2 * * *' 
+    # Run at random intervals using GitHub's cron with multiple schedules
+    - cron: '0 */3 * * *'  # Every 3 hours
+    - cron: '15 */4 * * *' # 15 minutes past every 4 hours
+    - cron: '30 */5 * * *' # 30 minutes past every 5 hours
+    - cron: '45 */6 * * *' # 45 minutes past every 6 hours
   workflow_dispatch:
     inputs:
       max_pages:
         description: 'Number of pages to search'
         required: false
-        default: '15'
+        default: '30'
         type: choice
         options:
-          - '10'
-          - '15'
           - '20'
           - '30'
+          - '40'
+          - '50'
 
 jobs:
   search-automation:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     
     steps:
       - name: Setup Python
@@ -34,7 +38,7 @@ jobs:
           playwright install chromium
           playwright install-deps
       
-      - name: Create search script
+      - name: Create search script with random delays
         run: |
           cat > search.py << 'EOF'
           import random
@@ -44,29 +48,43 @@ jobs:
           from playwright.sync_api import sync_playwright
           
           # Configuration
-          SEARCH_TERM = "eaglercraft server"
+          SEARCH_TERM = "zx server"
           TARGET_URL = "https://z-x.ddns.net/"
-          MAX_PAGES = int(os.getenv('MAX_PAGES', '50'))
+          # Randomize max pages between 20-50
+          MAX_PAGES = random.randint(20, 50)
           
-          def generate_random_ips(count=50):
+          # Override if provided via input
+          if os.getenv('MAX_PAGES'):
+              MAX_PAGES = int(os.getenv('MAX_PAGES'))
+          
+          def generate_random_ips(count=100):
               ips = []
               for _ in range(count):
                   ip = f"{random.randint(1,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}"
                   ips.append(ip)
               return ips
           
+          def random_delay(min_sec=2, max_sec=8):
+              """Add random delay to appear more natural"""
+              delay = random.uniform(min_sec, max_sec)
+              print(f"  ⏱️  Random delay: {delay:.1f}s")
+              time.sleep(delay)
+          
           def search_and_click(page, max_pages):
               try:
+                  # Random initial delay
+                  random_delay(1, 3)
+                  
                   # Go to Google
                   page.goto("https://www.google.com", wait_until="domcontentloaded", timeout=30000)
-                  time.sleep(2)
+                  random_delay(2, 4)
                   
                   # Accept cookies if present
                   try:
                       accept_btn = page.query_selector('button:has-text("Accept all"), button:has-text("I agree")')
                       if accept_btn:
                           accept_btn.click()
-                          time.sleep(1)
+                          random_delay(1, 2)
                   except:
                       pass
                   
@@ -75,16 +93,21 @@ jobs:
                   if not search_input:
                       search_input = page.query_selector('[aria-label="Search"]')
                   
-                  search_input.fill(SEARCH_TERM)
+                  # Type slowly like a human
+                  for char in SEARCH_TERM:
+                      search_input.type(char)
+                      time.sleep(random.uniform(0.05, 0.15))
+                  
+                  random_delay(0.5, 1)
                   search_input.press("Enter")
                   page.wait_for_load_state("networkidle", timeout=30000)
-                  time.sleep(2)
+                  random_delay(3, 5)
                   
                   found = False
                   page_num = 1
                   
                   while page_num <= max_pages and not found:
-                      print(f"  📄 Scanning page {page_num}...")
+                      print(f"  📄 Scanning page {page_num}/{max_pages}...")
                       
                       # Get all links
                       links = page.query_selector_all('a[href]')
@@ -96,10 +119,11 @@ jobs:
                                   print(f"  ✅ FOUND target URL on page {page_num}!")
                                   print(f"  📍 URL: {href}")
                                   
-                                  # Click the link
+                                  # Random delay before clicking
+                                  random_delay(1, 2)
                                   link.click()
                                   page.wait_for_load_state("networkidle", timeout=30000)
-                                  time.sleep(2)
+                                  random_delay(2, 3)
                                   found = True
                                   break
                           except:
@@ -109,9 +133,10 @@ jobs:
                       if not found and page_num < max_pages:
                           next_btn = page.query_selector('#pnnext')
                           if next_btn:
+                              random_delay(2, 4)
                               next_btn.click()
                               page.wait_for_load_state("networkidle", timeout=30000)
-                              time.sleep(2)
+                              random_delay(2, 3)
                               page_num += 1
                           else:
                               print(f"  ⏹️  No more pages (stopped at page {page_num})")
@@ -130,20 +155,25 @@ jobs:
           
           def main():
               print("=" * 70)
-              print("🤖 AUTO SEARCH - zx server (Playwright)")
+              print("🤖 AUTO SEARCH - zx server (Randomized)")
               print("=" * 70)
               print(f"🎯 Target: {TARGET_URL}")
               print(f"🔍 Search: {SEARCH_TERM}")
-              print(f"📚 Max Pages: {MAX_PAGES}")
+              print(f"📚 Max Pages: {MAX_PAGES} (randomized)")
               
-              # Generate IPs
-              all_ips = generate_random_ips(50)
+              # Generate more IPs
+              all_ips = generate_random_ips(100)
               print(f"\n📡 Generated {len(all_ips)} random IPs")
               
-              # Select random number of devices (1-5)
-              num_devices = random.randint(1, 5)
+              # Random number of devices (1-5, sometimes 1-7 for variety)
+              num_devices = random.randint(1, 7)
+              if num_devices > 5:
+                  num_devices = random.randint(1, 5)  # Cap at 5 most times
+              else:
+                  num_devices = random.randint(1, 5)
+              
               selected_ips = random.sample(all_ips, num_devices)
-              print(f"📱 Using {num_devices} device(s)")
+              print(f"📱 Using {num_devices} device(s) (randomly selected)")
               for idx, ip in enumerate(selected_ips, 1):
                   print(f"   Device {idx}: {ip}")
               
@@ -157,21 +187,39 @@ jobs:
                       
                       browser = None
                       try:
-                          # Launch browser
+                          # Random browser arguments
+                          browser_args = [
+                              '--no-sandbox',
+                              '--disable-dev-shm-usage',
+                              '--disable-blink-features=AutomationControlled',
+                          ]
+                          
+                          # Randomly add some args for variety
+                          if random.choice([True, False]):
+                              browser_args.append('--disable-gpu')
+                          if random.choice([True, False]):
+                              browser_args.append('--disable-setuid-sandbox')
+                          
                           browser = p.chromium.launch(
                               headless=True,
-                              args=[
-                                  '--no-sandbox',
-                                  '--disable-dev-shm-usage',
-                                  '--disable-blink-features=AutomationControlled',
-                                  '--disable-features=IsolateOrigins,site-per-process'
-                              ]
+                              args=browser_args
                           )
                           
-                          # Create context with custom user agent
+                          # Random viewport size
+                          width = random.choice([1366, 1920, 1536, 1440, 1680])
+                          height = random.choice([768, 1080, 864, 900, 1050])
+                          
+                          # Random user agent
+                          user_agents = [
+                              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+                              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121.0.0.0 Safari/537.36',
+                              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+                              'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
+                          ]
+                          
                           context = browser.new_context(
-                              viewport={'width': 1920, 'height': 1080},
-                              user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
+                              viewport={'width': width, 'height': height},
+                              user_agent=random.choice(user_agents)
                           )
                           page = context.new_page()
                           
@@ -184,9 +232,9 @@ jobs:
                           else:
                               print(f"  ❌ Device {i} FAILED (searched {pages} pages)")
                           
-                          # Random delay between devices
+                          # Random delay between devices (3-10 seconds)
                           if i < num_devices:
-                              delay = random.uniform(3, 6)
+                              delay = random.uniform(3, 10)
                               print(f"  ⏱️  Waiting {delay:.1f}s before next device...")
                               time.sleep(delay)
                               
@@ -207,15 +255,17 @@ jobs:
                   print("\n🎯 Target URL was found and clicked!")
               else:
                   print("\n⚠️  Target URL was NOT found in search results")
-                  print("   This could mean:")
-                  print("   1. The URL is not indexed by Google")
-                  print("   2. The URL doesn't appear for this search term")
-                  print("   3. Google is blocking automated requests")
               
               print("\n✨ Search completed!")
               return success_count > 0
           
           if __name__ == "__main__":
+              # Add random startup delay to make execution time unpredictable
+              startup_delay = random.uniform(0, 60)
+              if startup_delay > 10:
+                  print(f"⏰ Random startup delay: {startup_delay:.0f} seconds")
+                  time.sleep(startup_delay)
+              
               success = main()
               sys.exit(0 if success else 1)
           EOF
@@ -224,7 +274,7 @@ jobs:
       
       - name: Run search automation
         env:
-          MAX_PAGES: ${{ github.event.inputs.max_pages || '15' }}
+          MAX_PAGES: ${{ github.event.inputs.max_pages || '0' }}  # 0 means use random
         run: |
           python search.py
       
