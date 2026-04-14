@@ -3,7 +3,7 @@ name: Automated Google Search for zx server
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */2 * * *' 
   workflow_dispatch:
     inputs:
       max_pages:
@@ -44,9 +44,9 @@ jobs:
           from playwright.sync_api import sync_playwright
           
           # Configuration
-          SEARCH_TERM = "zx server"
+          SEARCH_TERM = "eaglercraft server"
           TARGET_URL = "https://z-x.ddns.net/"
-          MAX_PAGES = int(os.getenv('MAX_PAGES', '15'))
+          MAX_PAGES = int(os.getenv('MAX_PAGES', '50'))
           
           def generate_random_ips(count=50):
               ips = []
