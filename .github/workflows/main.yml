@@ -1,0 +1,251 @@
+# .github/workflows/automated-search.yml
+name: Automated Google Search for zx server
+
+on:
+  # Run automatically every 6 hours
+  schedule:
+    - cron: '0 */6 * * *'
+  
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: 'Number of pages to search'
+        required: false
+        default: '15'
+        type: choice
+        options:
+          - '10'
+          - '15'
+          - '20'
+          - '30'
+      num_devices:
+        description: 'Number of devices (1-5)'
+        required: false
+        default: 'random'
+        type: choice
+        options:
+          - 'random'
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+
+jobs:
+  search-automation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install selenium
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver xvfb
+      
+      - name: Create search script
+        run: |
+          cat > search.py << 'EOF'
+          import random
+          import time
+          import os
+          import sys
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.common.keys import Keys
+          from selenium.webdriver.support.ui import WebDriverWait
+          from selenium.webdriver.support import expected_conditions as EC
+          from selenium.webdriver.chrome.options import Options
+          
+          # Configuration - NO USER INPUT
+          SEARCH_TERM = "eaglercraft servers"
+          TARGET_URL = "https://z-x.ddns.net/"
+          
+          # Get parameters from environment
+          MAX_PAGES = int(os.getenv('MAX_PAGES', '15'))
+          NUM_DEVICES_INPUT = os.getenv('NUM_DEVICES', 'random')
+          
+          def generate_random_ips(count=50):
+              ips = []
+              for _ in range(count):
+                  ip = f"{random.randint(1,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}"
+                  ips.append(ip)
+              return ips
+          
+          def get_device_count():
+              if NUM_DEVICES_INPUT == 'random':
+                  return random.randint(1, 5)
+              else:
+                  return int(NUM_DEVICES_INPUT)
+          
+          def search_and_click(driver, max_pages):
+              try:
+                  print("  🌐 Navigating to Google...")
+                  driver.get("https://www.google.com")
+                  time.sleep(2)
+                  
+                  print(f"  🔍 Searching for '{SEARCH_TERM}'...")
+                  search_box = driver.find_element(By.NAME, "q")
+                  search_box.send_keys(SEARCH_TERM)
+                  search_box.send_keys(Keys.RETURN)
+                  time.sleep(3)
+                  
+                  found = False
+                  page = 1
+                  
+                  while page <= max_pages and not found:
+                      print(f"  📄 Scanning page {page}...")
+                      
+                      # Get all links on page
+                      links = driver.find_elements(By.XPATH, "//a[@href]")
+                      
+                      for link in links:
+                          try:
+                              url = link.get_attribute("href")
+                              if url and TARGET_URL in url:
+                                  print(f"  ✅ FOUND target URL on page {page}!")
+                                  print(f"  📍 URL: {url}")
+                                  link.click()
+                                  time.sleep(2)
+                                  found = True
+                                  break
+                          except:
+                              continue
+                      
+                      # Go to next page if not found
+                      if not found and page < max_pages:
+                          try:
+                              next_btn = driver.find_element(By.ID, "pnnext")
+                              next_btn.click()
+                              page += 1
+                              time.sleep(3)
+                          except:
+                              print(f"  ⏹️  No more pages (stopped at page {page})")
+                              break
+                      else:
+                          break
+                  
+                  if not found:
+                      print(f"  ❌ Target URL not found in {page} pages")
+                  
+                  return found, page
+                  
+              except Exception as e:
+                  print(f"  ❌ Error: {str(e)[:100]}")
+                  return False, 0
+          
+          def main():
+              print("=" * 70)
+              print("🤖 AUTO SEARCH - zx server")
+              print("=" * 70)
+              
+              # Setup Chrome for headless operation
+              chrome_options = Options()
+              chrome_options.add_argument("--headless=new")
+              chrome_options.add_argument("--no-sandbox")
+              chrome_options.add_argument("--disable-dev-shm-usage")
+              chrome_options.add_argument("--disable-gpu")
+              chrome_options.add_argument("--window-size=1920x1080")
+              
+              # Generate IPs
+              all_ips = generate_random_ips(50)
+              print(f"\n📡 Generated {len(all_ips)} random IPs")
+              
+              # Select devices
+              num_devices = get_device_count()
+              selected_ips = random.sample(all_ips, num_devices)
+              print(f"📱 Using {num_devices} device(s)")
+              
+              success_count = 0
+              
+              for i, device_ip in enumerate(selected_ips, 1):
+                  print(f"\n{'='*70}")
+                  print(f"🖥️  DEVICE {i}/{num_devices}")
+                  print(f"   Simulated IP: {device_ip}")
+                  print(f"   {'='*60}")
+                  
+                  driver = None
+                  try:
+                      driver = webdriver.Chrome(options=chrome_options)
+                      found, pages = search_and_click(driver, MAX_PAGES)
+                      
+                      if found:
+                          success_count += 1
+                          print(f"  ✅ Device {i} SUCCESS!")
+                      else:
+                          print(f"  ❌ Device {i} FAILED")
+                      
+                      # Random delay between devices
+                      if i < num_devices:
+                          delay = random.uniform(2, 5)
+                          print(f"  ⏱️  Waiting {delay:.1f}s before next device...")
+                          time.sleep(delay)
+                          
+                  except Exception as e:
+                      print(f"  ❌ Device {i} ERROR: {str(e)[:80]}")
+                  finally:
+                      if driver:
+                          driver.quit()
+              
+              # Print summary
+              print("\n" + "=" * 70)
+              print("📊 FINAL RESULTS")
+              print("=" * 70)
+              print(f"✅ Successful devices: {success_count}/{num_devices}")
+              print(f"📈 Success rate: {(success_count/num_devices)*100:.1f}%")
+              
+              if success_count > 0:
+                  print("\n🎯 Target URL was found and clicked!")
+              else:
+                  print("\n⚠️  Target URL was NOT found in search results")
+                  print("   Possible reasons:")
+                  print("   1. URL not indexed by Google")
+                  print("   2. Google is blocking automated requests")
+                  print("   3. Search term doesn't match")
+              
+              print("\n✨ Search completed!")
+              return success_count > 0
+          
+          if __name__ == "__main__":
+              success = main()
+              sys.exit(0 if success else 1)
+          EOF
+          
+          echo "✅ Script created"
+      
+      - name: Setup display
+        run: |
+          sudo Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+      
+      - name: Run search automation
+        env:
+          MAX_PAGES: ${{ github.event.inputs.max_pages || '15' }}
+          NUM_DEVICES: ${{ github.event.inputs.num_devices || 'random' }}
+        run: |
+          python search.py
+      
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-logs
+          path: |
+            *.log
+            *.txt
+          retention-days: 3
+      
+      - name: Success notification
+        if: success()
+        run: |
+          echo "✅ Workflow completed successfully at $(date)"
+          echo "Search completed for 'zx server'"
