@@ -17,176 +17,171 @@ jobs:
       - name: Install Puppeteer
         run: npm install puppeteer
 
-      - name: Run automation with 100+ devices and proxies
-        run: node -e "$(cat << 'EOF'
-const puppeteer = require('puppeteer');
-const https = require('https');
-
-// ---------------- Generate 100+ User Agents ----------------
-function generateUserAgents(count = 100) {
-  const osList = [
-    'Windows NT 10.0; Win64; x64', 'Windows NT 10.0; WOW64',
-    'Macintosh; Intel Mac OS X 10_15_7', 'Macintosh; Intel Mac OS X 11_6_0',
-    'X11; Linux x86_64', 'X11; Ubuntu; Linux x86_64',
-    'iPhone; CPU iPhone OS 17_1 like Mac OS X',
-    'iPad; CPU OS 17_1 like Mac OS X', 'Android 13; Mobile'
-  ];
-  const browsers = [
-    { name: 'Chrome', versions: ['119', '120', '121', '122', '123'] },
-    { name: 'Firefox', versions: ['118', '119', '120', '121'] },
-    { name: 'Safari', versions: ['605.1.15', '605.1.15'] },
-    { name: 'Edge', versions: ['119', '120', '121'] }
-  ];
-  const userAgents = [];
-  for (let i = 0; i < count; i++) {
-    const os = osList[Math.floor(Math.random() * osList.length)];
-    const browser = browsers[Math.floor(Math.random() * browsers.length)];
-    const version = browser.versions[Math.floor(Math.random() * browser.versions.length)];
-    let ua = '';
-    if (browser.name === 'Chrome') {
-      ua = `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Safari/537.36`;
-    } else if (browser.name === 'Firefox') {
-      ua = `Mozilla/5.0 (${os}; rv:${version}.0) Gecko/20100101 Firefox/${version}.0`;
-    } else if (browser.name === 'Safari') {
-      ua = `Mozilla/5.0 (${os}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${version} Safari/605.1.15`;
-    } else if (browser.name === 'Edge') {
-      ua = `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Safari/537.36 Edg/${version}.0.0.0`;
-    }
-    userAgents.push(ua);
-  }
-  return userAgents;
-}
-
-// ---------------- Fetch ~100 proxies from public API ----------------
-async function fetchProxies() {
-  return new Promise((resolve, reject) => {
-    // Free proxy API (no key, returns JSON with proxies)
-    const url = 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all';
-    https.get(url, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        const lines = data.trim().split('\n');
-        const proxies = lines.filter(line => line.includes(':')).map(line => `http://${line.trim()}`);
-        if (proxies.length === 0) reject('No proxies fetched');
-        else resolve(proxies.slice(0, 120)); // take up to 120
-      });
-    }).on('error', reject);
-  });
-}
-
-// ---------------- Helper: random element ----------------
-const randomItem = arr => arr[Math.floor(Math.random() * arr.length)];
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-// ---------------- Main with retry logic ----------------
-(async () => {
-  console.log('Generating 100+ user agents...');
-  const userAgents = generateUserAgents(120);
-  console.log('Fetching fresh proxy list...');
-  let proxies = [];
-  try {
-    proxies = await fetchProxies();
-    console.log(`Fetched ${proxies.length} proxies.`);
-  } catch (err) {
-    console.error('Failed to fetch proxies:', err);
-    // Fallback hardcoded proxies (just a few)
-    proxies = [
-      'http://103.152.112.120:80', 'http://45.15.159.179:80',
-      'http://47.91.99.166:3128', 'http://159.203.127.142:3128'
-    ];
-    console.log('Using fallback proxies.');
-  }
-
-  // Random device
-  const userAgent = randomItem(userAgents);
-  const viewport = { width: 1024 + Math.random() * 896, height: 768 + Math.random() * 312 };
-  console.log(`User agent: ${userAgent.split('/')[0]}`);
-  console.log(`Viewport: ${Math.round(viewport.width)}x${Math.round(viewport.height)}`);
-
-  // Try proxies until one works
-  let browser = null;
-  let success = false;
-  const shuffledProxies = [...proxies];
-  for (let i = shuffledProxies.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffledProxies[i], shuffledProxies[j]] = [shuffledProxies[j], shuffledProxies[i]];
-  }
-
-  for (const proxy of shuffledProxies.slice(0, 20)) { // try max 20 proxies
-    try {
-      console.log(`Trying proxy: ${proxy}`);
-      browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', `--proxy-server=${proxy}`],
-        timeout: 15000
-      });
-      const page = await browser.newPage();
-      await page.setUserAgent(userAgent);
-      await page.setViewport({ width: Math.round(viewport.width), height: Math.round(viewport.height) });
-
-      const url = 'https://chill-domain.cc.cd';
-      console.log(`Navigating to ${url}`);
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-      await delay(1000 + Math.random() * 2000);
-
-      // Scroll
-      console.log('Scrolling...');
-      await page.evaluate(async () => {
-        await new Promise((resolve) => {
-          let totalHeight = 0;
-          const distance = 100;
-          const timer = setInterval(() => {
-            const scrollHeight = document.body.scrollHeight;
-            window.scrollBy(0, distance);
-            totalHeight += distance;
-            if (totalHeight >= scrollHeight) {
-              clearInterval(timer);
-              resolve();
+      - name: Create script.js
+        run: |
+          cat > script.js << 'SCRIPT_EOF'
+          const puppeteer = require('puppeteer');
+          const https = require('https');
+          
+          // ---------------- Generate 100+ User Agents ----------------
+          function generateUserAgents(count = 100) {
+            const osList = [
+              'Windows NT 10.0; Win64; x64', 'Windows NT 10.0; WOW64',
+              'Macintosh; Intel Mac OS X 10_15_7', 'Macintosh; Intel Mac OS X 11_6_0',
+              'X11; Linux x86_64', 'X11; Ubuntu; Linux x86_64',
+              'iPhone; CPU iPhone OS 17_1 like Mac OS X',
+              'iPad; CPU OS 17_1 like Mac OS X', 'Android 13; Mobile'
+            ];
+            const browsers = [
+              { name: 'Chrome', versions: ['119', '120', '121', '122', '123'] },
+              { name: 'Firefox', versions: ['118', '119', '120', '121'] },
+              { name: 'Safari', versions: ['605.1.15', '605.1.15'] },
+              { name: 'Edge', versions: ['119', '120', '121'] }
+            ];
+            const userAgents = [];
+            for (let i = 0; i < count; i++) {
+              const os = osList[Math.floor(Math.random() * osList.length)];
+              const browser = browsers[Math.floor(Math.random() * browsers.length)];
+              const version = browser.versions[Math.floor(Math.random() * browser.versions.length)];
+              let ua = '';
+              if (browser.name === 'Chrome') {
+                ua = `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Safari/537.36`;
+              } else if (browser.name === 'Firefox') {
+                ua = `Mozilla/5.0 (${os}; rv:${version}.0) Gecko/20100101 Firefox/${version}.0`;
+              } else if (browser.name === 'Safari') {
+                ua = `Mozilla/5.0 (${os}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${version} Safari/605.1.15`;
+              } else if (browser.name === 'Edge') {
+                ua = `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Safari/537.36 Edg/${version}.0.0.0`;
+              }
+              userAgents.push(ua);
             }
-          }, 100);
-        });
-      });
+            return userAgents;
+          }
+          
+          // ---------------- Fetch ~100 proxies from public API ----------------
+          async function fetchProxies() {
+            return new Promise((resolve, reject) => {
+              const url = 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all';
+              https.get(url, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                  const lines = data.trim().split('\n');
+                  const proxies = lines.filter(line => line.includes(':')).map(line => `http://${line.trim()}`);
+                  if (proxies.length === 0) reject('No proxies fetched');
+                  else resolve(proxies.slice(0, 120));
+                });
+              }).on('error', reject);
+            });
+          }
+          
+          const randomItem = arr => arr[Math.floor(Math.random() * arr.length)];
+          const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+          
+          (async () => {
+            console.log('Generating 100+ user agents...');
+            const userAgents = generateUserAgents(120);
+            console.log('Fetching fresh proxy list...');
+            let proxies = [];
+            try {
+              proxies = await fetchProxies();
+              console.log(`Fetched ${proxies.length} proxies.`);
+            } catch (err) {
+              console.error('Failed to fetch proxies:', err);
+              proxies = [
+                'http://103.152.112.120:80', 'http://45.15.159.179:80',
+                'http://47.91.99.166:3128', 'http://159.203.127.142:3128'
+              ];
+              console.log('Using fallback proxies.');
+            }
+          
+            const userAgent = randomItem(userAgents);
+            const viewport = { width: 1024 + Math.random() * 896, height: 768 + Math.random() * 312 };
+            console.log(`User agent: ${userAgent.split('/')[0]}`);
+            console.log(`Viewport: ${Math.round(viewport.width)}x${Math.round(viewport.height)}`);
+          
+            let browser = null;
+            let success = false;
+            const shuffledProxies = [...proxies];
+            for (let i = shuffledProxies.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [shuffledProxies[i], shuffledProxies[j]] = [shuffledProxies[j], shuffledProxies[i]];
+            }
+          
+            for (const proxy of shuffledProxies.slice(0, 20)) {
+              try {
+                console.log(`Trying proxy: ${proxy}`);
+                browser = await puppeteer.launch({
+                  headless: true,
+                  args: ['--no-sandbox', '--disable-setuid-sandbox', `--proxy-server=${proxy}`],
+                  timeout: 15000
+                });
+                const page = await browser.newPage();
+                await page.setUserAgent(userAgent);
+                await page.setViewport({ width: Math.round(viewport.width), height: Math.round(viewport.height) });
+          
+                const url = 'https://chill-domain.cc.cd';
+                console.log(`Navigating to ${url}`);
+                await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+                await delay(1000 + Math.random() * 2000);
+          
+                console.log('Scrolling...');
+                await page.evaluate(async () => {
+                  await new Promise((resolve) => {
+                    let totalHeight = 0;
+                    const distance = 100;
+                    const timer = setInterval(() => {
+                      const scrollHeight = document.body.scrollHeight;
+                      window.scrollBy(0, distance);
+                      totalHeight += distance;
+                      if (totalHeight >= scrollHeight) {
+                        clearInterval(timer);
+                        resolve();
+                      }
+                    }, 100);
+                  });
+                });
+          
+                await delay(1000 + Math.random() * 1500);
+          
+                console.log('Clicking...');
+                const clicked = await page.evaluate(() => {
+                  const selectors = ['a', 'button', '[role="button"]', '[onclick]', 'input[type="submit"]', '.btn'];
+                  let elements = [];
+                  for (const sel of selectors) elements.push(...document.querySelectorAll(sel));
+                  const visible = elements.filter(el => el.offsetParent !== null);
+                  if (visible.length === 0) return false;
+                  const randomEl = visible[Math.floor(Math.random() * visible.length)];
+                  randomEl.click();
+                  return true;
+                });
+                if (!clicked) {
+                  console.log('No clickable element – clicking center');
+                  await page.mouse.click(viewport.width / 2, viewport.height / 2);
+                }
+          
+                await delay(2000);
+                await page.screenshot({ path: 'last-visit.png', fullPage: true });
+                success = true;
+                await browser.close();
+                break;
+              } catch (err) {
+                console.log(`Proxy ${proxy} failed:`, err.message);
+                if (browser) await browser.close().catch(() => {});
+                continue;
+              }
+            }
+          
+            if (!success) {
+              console.error('All proxies failed.');
+              process.exit(1);
+            }
+            console.log('Done.');
+          })();
+          SCRIPT_EOF
 
-      await delay(1000 + Math.random() * 1500);
-
-      // Click
-      console.log('Clicking...');
-      const clicked = await page.evaluate(() => {
-        const selectors = ['a', 'button', '[role="button"]', '[onclick]', 'input[type="submit"]', '.btn'];
-        let elements = [];
-        for (const sel of selectors) elements.push(...document.querySelectorAll(sel));
-        const visible = elements.filter(el => el.offsetParent !== null);
-        if (visible.length === 0) return false;
-        const randomEl = visible[Math.floor(Math.random() * visible.length)];
-        randomEl.click();
-        return true;
-      });
-      if (!clicked) {
-        console.log('No clickable element – clicking center');
-        await page.mouse.click(viewport.width / 2, viewport.height / 2);
-      }
-
-      await delay(2000);
-      await page.screenshot({ path: 'last-visit.png', fullPage: true });
-      success = true;
-      await browser.close();
-      break;
-    } catch (err) {
-      console.log(`Proxy ${proxy} failed:`, err.message);
-      if (browser) await browser.close().catch(() => {});
-      continue;
-    }
-  }
-
-  if (!success) {
-    console.error('All proxies failed.');
-    process.exit(1);
-  }
-  console.log('Done.');
-})();
-EOF
-)"
+      - name: Run script
+        run: node script.js
 
       - name: Upload screenshot
         uses: actions/upload-artifact@v4
