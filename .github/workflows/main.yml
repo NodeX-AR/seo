@@ -2,10 +2,7 @@ name: Visit URL with Random IP & Device (100+ each)
 
 on:
   schedule:
-    - cron: '0 */3 * * *'
-    - cron: '15 */4 * * *'
-    - cron: '30 */5 * * *'
-    - cron: '45 */6 * * *'  # every 6 hours
+    - cron: '0 */6 * * *'   # every 6 hours
   workflow_dispatch:         # manual trigger
 
 jobs:
