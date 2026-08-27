@@ -1,9 +1,9 @@
-name: Visit URL with Random IP & Device (100+ each)
+name: Visit URL with Random Device
 
 on:
   schedule:
-    - cron: '0 */1 * * *'   # every hour
-  workflow_dispatch:         # manual trigger
+    - cron: '0 */1 * * *'
+  workflow_dispatch:
 
 jobs:
   visit:
@@ -13,201 +13,47 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
       - name: Install Puppeteer
         run: npm install puppeteer
-
-      - name: Create script.js
+      - name: Run script
         run: |
-          cat > script.js << 'SCRIPT_EOF'
+          cat > script.js << 'EOF'
           const puppeteer = require('puppeteer');
-          const https = require('https');
+          const TARGET = 'https://pressrelease.in/newsroom/17-year-old-kerala-student-recognized-by-nasa-and-python-community-for-security--c08637ec';
+          const VISITS = 30;
+          const INTERVAL = 10;
 
-          // ---------------- Generate 100+ User Agents ----------------
-          function generateUserAgents(count = 120) {
-            const osList = [
-              'Windows NT 10.0; Win64; x64', 'Windows NT 10.0; WOW64',
-              'Macintosh; Intel Mac OS X 10_15_7', 'Macintosh; Intel Mac OS X 11_6_0',
-              'X11; Linux x86_64', 'X11; Ubuntu; Linux x86_64',
-              'iPhone; CPU iPhone OS 17_1 like Mac OS X',
-              'iPad; CPU OS 17_1 like Mac OS X', 'Android 13; Mobile'
-            ];
-            const browsers = [
-              { name: 'Chrome', versions: ['119', '120', '121', '122', '123'] },
-              { name: 'Firefox', versions: ['118', '119', '120', '121'] },
-              { name: 'Safari', versions: ['605.1.15', '605.1.15'] },
-              { name: 'Edge', versions: ['119', '120', '121'] }
-            ];
-            const userAgents = [];
-            for (let i = 0; i < count; i++) {
-              const os = osList[Math.floor(Math.random() * osList.length)];
-              const browser = browsers[Math.floor(Math.random() * browsers.length)];
-              const version = browser.versions[Math.floor(Math.random() * browser.versions.length)];
-              let ua = '';
-              if (browser.name === 'Chrome') {
-                ua = `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Safari/537.36`;
-              } else if (browser.name === 'Firefox') {
-                ua = `Mozilla/5.0 (${os}; rv:${version}.0) Gecko/20100101 Firefox/${version}.0`;
-              } else if (browser.name === 'Safari') {
-                ua = `Mozilla/5.0 (${os}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${version} Safari/605.1.15`;
-              } else if (browser.name === 'Edge') {
-                ua = `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Safari/537.36 Edg/${version}.0.0.0`;
-              }
-              userAgents.push(ua);
-            }
-            return userAgents;
+          function randomUA() {
+            const os = ['Windows NT 10.0; Win64; x64', 'Macintosh; Intel Mac OS X 10_15_7', 'X11; Linux x86_64', 'iPhone; CPU iPhone OS 17_1 like Mac OS X', 'Android 13; Mobile'];
+            const browsers = ['Chrome', 'Firefox', 'Edge'];
+            const osChoice = os[Math.floor(Math.random() * os.length)];
+            const browser = browsers[Math.floor(Math.random() * browsers.length)];
+            const ver = 115 + Math.floor(Math.random() * 10);
+            if (browser === 'Chrome') return `Mozilla/5.0 (${osChoice}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${ver}.0.0.0 Safari/537.36`;
+            if (browser === 'Firefox') return `Mozilla/5.0 (${osChoice}; rv:${ver}.0) Gecko/20100101 Firefox/${ver}.0`;
+            return `Mozilla/5.0 (${osChoice}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${ver}.0.0.0 Safari/537.36 Edg/${ver}.0.0.0`;
           }
 
-          // ---------------- Fetch ~100 proxies from public API ----------------
-          async function fetchProxies() {
-            return new Promise((resolve, reject) => {
-              const url = 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all';
-              https.get(url, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                  const lines = data.trim().split('\n');
-                  const proxies = lines.filter(line => line.includes(':')).map(line => `http://${line.trim()}`);
-                  if (proxies.length === 0) reject('No proxies fetched');
-                  else resolve(proxies.slice(0, 120));
-                });
-              }).on('error', reject);
-            });
-          }
-
-          const randomItem = arr => arr[Math.floor(Math.random() * arr.length)];
-          const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-          // Target URL (changed to your requested one)
-          const TARGET_URL = 'https://pressrelease.in/newsroom/17-year-old-kerala-student-recognized-by-nasa-and-python-community-for-security--c08637ec';
-          const VISITS = 30;           // number of visits per job run
-          const INTERVAL_SECONDS = 10; // wait between visits
+          const delay = ms => new Promise(r => setTimeout(r, ms));
 
           (async () => {
-            console.log('Generating 120 user agents...');
-            const userAgents = generateUserAgents(120);
-            console.log('Fetching fresh proxy list...');
-            let proxies = [];
-            try {
-              proxies = await fetchProxies();
-              console.log(`Fetched ${proxies.length} proxies.`);
-            } catch (err) {
-              console.error('Failed to fetch proxies:', err);
-              proxies = [
-                'http://103.152.112.120:80', 'http://45.15.159.179:80',
-                'http://47.91.99.166:3128', 'http://159.203.127.142:3128'
-              ];
-              console.log('Using fallback proxies.');
-            }
-
-            // Shuffle proxies for random selection
-            const shuffledProxies = [...proxies];
-            for (let i = shuffledProxies.length - 1; i > 0; i--) {
-              const j = Math.floor(Math.random() * (i + 1));
-              [shuffledProxies[i], shuffledProxies[j]] = [shuffledProxies[j], shuffledProxies[i]];
-            }
-
-            let lastScreenshotPath = 'last-visit.png';
-
-            for (let visit = 1; visit <= VISITS; visit++) {
-              console.log(`\n--- Visit ${visit}/${VISITS} ---`);
-              const userAgent = randomItem(userAgents);
-              const viewport = {
-                width: Math.round(1024 + Math.random() * 896),
-                height: Math.round(768 + Math.random() * 312)
-              };
-              console.log(`User agent: ${userAgent.split('/')[0]}`);
-              console.log(`Viewport: ${viewport.width}x${viewport.height}`);
-
-              let browser = null;
-              let success = false;
-              // Try proxies in order until one works for this visit
-              for (const proxy of shuffledProxies) {
-                try {
-                  console.log(`Trying proxy: ${proxy}`);
-                  browser = await puppeteer.launch({
-                    headless: true,
-                    args: ['--no-sandbox', '--disable-setuid-sandbox', `--proxy-server=${proxy}`],
-                    timeout: 15000
-                  });
-                  const page = await browser.newPage();
-                  await page.setUserAgent(userAgent);
-                  await page.setViewport(viewport);
-
-                  console.log(`Navigating to ${TARGET_URL}`);
-                  await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 30000 });
-                  await delay(1000 + Math.random() * 2000);
-
-                  console.log('Scrolling...');
-                  await page.evaluate(async () => {
-                    await new Promise((resolve) => {
-                      let totalHeight = 0;
-                      const distance = 100;
-                      const timer = setInterval(() => {
-                        const scrollHeight = document.body.scrollHeight;
-                        window.scrollBy(0, distance);
-                        totalHeight += distance;
-                        if (totalHeight >= scrollHeight) {
-                          clearInterval(timer);
-                          resolve();
-                        }
-                      }, 100);
-                    });
-                  });
-
-                  await delay(1000 + Math.random() * 1500);
-
-                  console.log('Clicking...');
-                  const clicked = await page.evaluate(() => {
-                    const selectors = ['a', 'button', '[role="button"]', '[onclick]', 'input[type="submit"]', '.btn'];
-                    let elements = [];
-                    for (const sel of selectors) elements.push(...document.querySelectorAll(sel));
-                    const visible = elements.filter(el => el.offsetParent !== null);
-                    if (visible.length === 0) return false;
-                    const randomEl = visible[Math.floor(Math.random() * visible.length)];
-                    randomEl.click();
-                    return true;
-                  });
-                  if (!clicked) {
-                    console.log('No clickable element – clicking center');
-                    await page.mouse.click(viewport.width / 2, viewport.height / 2);
-                  }
-
-                  await delay(2000);
-                  // Save screenshot for this visit (overwrites each time)
-                  await page.screenshot({ path: lastScreenshotPath, fullPage: true });
-                  success = true;
-                  await browser.close();
-                  break; // proxy succeeded, move to next visit
-                } catch (err) {
-                  console.log(`Proxy ${proxy} failed:`, err.message);
-                  if (browser) await browser.close().catch(() => {});
-                  continue;
-                }
-              }
-
-              if (!success) {
-                console.error(`Visit ${visit} failed with all proxies.`);
-                // Continue to next visit anyway? We'll just proceed.
-              }
-
-              // Wait before next visit, except after the last one
-              if (visit < VISITS) {
-                const waitMs = INTERVAL_SECONDS * 1000 + Math.random() * 1000;
-                console.log(`Waiting ${Math.round(waitMs/1000)} seconds before next visit...`);
-                await delay(waitMs);
+            for (let i = 1; i <= VISITS; i++) {
+              console.log(`\nVisit ${i}/${VISITS}`);
+              const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+              const page = await browser.newPage();
+              await page.setUserAgent(randomUA());
+              await page.setViewport({ width: 1024 + Math.floor(Math.random()*500), height: 768 + Math.floor(Math.random()*300) });
+              console.log(`UA: ${(await page.evaluate(() => navigator.userAgent)).split('/')[0]}`);
+              await page.goto(TARGET, { waitUntil: 'load', timeout: 20000 });
+              await delay(2000 + Math.random() * 3000);
+              await browser.close();
+              if (i < VISITS) {
+                const wait = INTERVAL * 1000 + Math.random() * 1000;
+                console.log(`Waiting ${Math.round(wait/1000)}s...`);
+                await delay(wait);
               }
             }
-
-            console.log('All visits completed.');
+            console.log('Done.');
           })();
-          SCRIPT_EOF
-
-      - name: Run script
-        run: node script.js
-
-      - name: Upload screenshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: page-screenshot
-          path: last-visit.png
+          EOF
+          node script.js
