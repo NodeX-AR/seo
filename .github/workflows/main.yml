@@ -2,7 +2,7 @@ name: Visit URL with Random IP & Device (100+ each)
 
 on:
   schedule:
-    - cron: '0 */1 * * *'   # every 6 hours
+    - cron: '0 */1 * * *'   # every hour
   workflow_dispatch:         # manual trigger
 
 jobs:
@@ -22,9 +22,9 @@ jobs:
           cat > script.js << 'SCRIPT_EOF'
           const puppeteer = require('puppeteer');
           const https = require('https');
-          
+
           // ---------------- Generate 100+ User Agents ----------------
-          function generateUserAgents(count = 100) {
+          function generateUserAgents(count = 120) {
             const osList = [
               'Windows NT 10.0; Win64; x64', 'Windows NT 10.0; WOW64',
               'Macintosh; Intel Mac OS X 10_15_7', 'Macintosh; Intel Mac OS X 11_6_0',
@@ -57,7 +57,7 @@ jobs:
             }
             return userAgents;
           }
-          
+
           // ---------------- Fetch ~100 proxies from public API ----------------
           async function fetchProxies() {
             return new Promise((resolve, reject) => {
@@ -74,12 +74,17 @@ jobs:
               }).on('error', reject);
             });
           }
-          
+
           const randomItem = arr => arr[Math.floor(Math.random() * arr.length)];
           const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-          
+
+          // Target URL (changed to your requested one)
+          const TARGET_URL = 'https://pressrelease.in/newsroom/17-year-old-kerala-student-recognized-by-nasa-and-python-community-for-security--c08637ec';
+          const VISITS = 30;           // number of visits per job run
+          const INTERVAL_SECONDS = 10; // wait between visits
+
           (async () => {
-            console.log('Generating 100+ user agents...');
+            console.log('Generating 120 user agents...');
             const userAgents = generateUserAgents(120);
             console.log('Fetching fresh proxy list...');
             let proxies = [];
@@ -94,89 +99,107 @@ jobs:
               ];
               console.log('Using fallback proxies.');
             }
-          
-            const userAgent = randomItem(userAgents);
-            const viewport = { width: 1024 + Math.random() * 896, height: 768 + Math.random() * 312 };
-            console.log(`User agent: ${userAgent.split('/')[0]}`);
-            console.log(`Viewport: ${Math.round(viewport.width)}x${Math.round(viewport.height)}`);
-          
-            let browser = null;
-            let success = false;
+
+            // Shuffle proxies for random selection
             const shuffledProxies = [...proxies];
             for (let i = shuffledProxies.length - 1; i > 0; i--) {
               const j = Math.floor(Math.random() * (i + 1));
               [shuffledProxies[i], shuffledProxies[j]] = [shuffledProxies[j], shuffledProxies[i]];
             }
-          
-            for (const proxy of shuffledProxies.slice(0, 20)) {
-              try {
-                console.log(`Trying proxy: ${proxy}`);
-                browser = await puppeteer.launch({
-                  headless: true,
-                  args: ['--no-sandbox', '--disable-setuid-sandbox', `--proxy-server=${proxy}`],
-                  timeout: 15000
-                });
-                const page = await browser.newPage();
-                await page.setUserAgent(userAgent);
-                await page.setViewport({ width: Math.round(viewport.width), height: Math.round(viewport.height) });
-          
-                const url = 'https://chill-domain.cc.cd';
-                console.log(`Navigating to ${url}`);
-                await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-                await delay(1000 + Math.random() * 2000);
-          
-                console.log('Scrolling...');
-                await page.evaluate(async () => {
-                  await new Promise((resolve) => {
-                    let totalHeight = 0;
-                    const distance = 100;
-                    const timer = setInterval(() => {
-                      const scrollHeight = document.body.scrollHeight;
-                      window.scrollBy(0, distance);
-                      totalHeight += distance;
-                      if (totalHeight >= scrollHeight) {
-                        clearInterval(timer);
-                        resolve();
-                      }
-                    }, 100);
+
+            let lastScreenshotPath = 'last-visit.png';
+
+            for (let visit = 1; visit <= VISITS; visit++) {
+              console.log(`\n--- Visit ${visit}/${VISITS} ---`);
+              const userAgent = randomItem(userAgents);
+              const viewport = {
+                width: Math.round(1024 + Math.random() * 896),
+                height: Math.round(768 + Math.random() * 312)
+              };
+              console.log(`User agent: ${userAgent.split('/')[0]}`);
+              console.log(`Viewport: ${viewport.width}x${viewport.height}`);
+
+              let browser = null;
+              let success = false;
+              // Try proxies in order until one works for this visit
+              for (const proxy of shuffledProxies) {
+                try {
+                  console.log(`Trying proxy: ${proxy}`);
+                  browser = await puppeteer.launch({
+                    headless: true,
+                    args: ['--no-sandbox', '--disable-setuid-sandbox', `--proxy-server=${proxy}`],
+                    timeout: 15000
                   });
-                });
-          
-                await delay(1000 + Math.random() * 1500);
-          
-                console.log('Clicking...');
-                const clicked = await page.evaluate(() => {
-                  const selectors = ['a', 'button', '[role="button"]', '[onclick]', 'input[type="submit"]', '.btn'];
-                  let elements = [];
-                  for (const sel of selectors) elements.push(...document.querySelectorAll(sel));
-                  const visible = elements.filter(el => el.offsetParent !== null);
-                  if (visible.length === 0) return false;
-                  const randomEl = visible[Math.floor(Math.random() * visible.length)];
-                  randomEl.click();
-                  return true;
-                });
-                if (!clicked) {
-                  console.log('No clickable element – clicking center');
-                  await page.mouse.click(viewport.width / 2, viewport.height / 2);
+                  const page = await browser.newPage();
+                  await page.setUserAgent(userAgent);
+                  await page.setViewport(viewport);
+
+                  console.log(`Navigating to ${TARGET_URL}`);
+                  await page.goto(TARGET_URL, { waitUntil: 'networkidle2', timeout: 30000 });
+                  await delay(1000 + Math.random() * 2000);
+
+                  console.log('Scrolling...');
+                  await page.evaluate(async () => {
+                    await new Promise((resolve) => {
+                      let totalHeight = 0;
+                      const distance = 100;
+                      const timer = setInterval(() => {
+                        const scrollHeight = document.body.scrollHeight;
+                        window.scrollBy(0, distance);
+                        totalHeight += distance;
+                        if (totalHeight >= scrollHeight) {
+                          clearInterval(timer);
+                          resolve();
+                        }
+                      }, 100);
+                    });
+                  });
+
+                  await delay(1000 + Math.random() * 1500);
+
+                  console.log('Clicking...');
+                  const clicked = await page.evaluate(() => {
+                    const selectors = ['a', 'button', '[role="button"]', '[onclick]', 'input[type="submit"]', '.btn'];
+                    let elements = [];
+                    for (const sel of selectors) elements.push(...document.querySelectorAll(sel));
+                    const visible = elements.filter(el => el.offsetParent !== null);
+                    if (visible.length === 0) return false;
+                    const randomEl = visible[Math.floor(Math.random() * visible.length)];
+                    randomEl.click();
+                    return true;
+                  });
+                  if (!clicked) {
+                    console.log('No clickable element – clicking center');
+                    await page.mouse.click(viewport.width / 2, viewport.height / 2);
+                  }
+
+                  await delay(2000);
+                  // Save screenshot for this visit (overwrites each time)
+                  await page.screenshot({ path: lastScreenshotPath, fullPage: true });
+                  success = true;
+                  await browser.close();
+                  break; // proxy succeeded, move to next visit
+                } catch (err) {
+                  console.log(`Proxy ${proxy} failed:`, err.message);
+                  if (browser) await browser.close().catch(() => {});
+                  continue;
                 }
-          
-                await delay(2000);
-                await page.screenshot({ path: 'last-visit.png', fullPage: true });
-                success = true;
-                await browser.close();
-                break;
-              } catch (err) {
-                console.log(`Proxy ${proxy} failed:`, err.message);
-                if (browser) await browser.close().catch(() => {});
-                continue;
+              }
+
+              if (!success) {
+                console.error(`Visit ${visit} failed with all proxies.`);
+                // Continue to next visit anyway? We'll just proceed.
+              }
+
+              // Wait before next visit, except after the last one
+              if (visit < VISITS) {
+                const waitMs = INTERVAL_SECONDS * 1000 + Math.random() * 1000;
+                console.log(`Waiting ${Math.round(waitMs/1000)} seconds before next visit...`);
+                await delay(waitMs);
               }
             }
-          
-            if (!success) {
-              console.error('All proxies failed.');
-              process.exit(1);
-            }
-            console.log('Done.');
+
+            console.log('All visits completed.');
           })();
           SCRIPT_EOF
 
